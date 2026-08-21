@@ -1,41 +1,130 @@
 # RecoverFlow
 
-RecoverFlow is an explainable AI payment-failure recovery control plane. It is
-a clickable portfolio demo: a Razorpay-shaped payment failure becomes a
-policy-checked recovery plan, simulated customer journey, and auditable outcome.
+> A safety-first recovery desk for failed payments — decide the next best action, create one respectful recovery journey, and leave an audit trail for every decision.
 
-## What is implemented
+[Open the live demo](https://recoverflow-payment-recovery.peothanh46abc.chatgpt.site) · [Read the implementation plan](implmenetation_plan.md)
 
-- D1-backed recovery queue, audit ledger, and demo inbox.
-- A UPI issuer-outage scenario with correlated “failure weather”.
-- Safe deterministic decisions that work with no API key.
-- Optional server-side Groq analysis using strict JSON schema output.
-- Visible separation between provider facts, AI proposal, policy controls, and
-  executable customer action.
-- Customer recovery simulation, success reconciliation, and duplicate-event
-  replay that creates no duplicate side effect.
-- A credential-free Razorpay event adapter with PII-minimizing normalization and
-  HMAC verification utility for future contract tests.
+RecoverFlow is a full-stack product demo for a painful payments-operations problem: a payment has failed, the customer may still want to pay, and blindly retrying the same rail can make the experience worse.
 
-## Safety boundary
+Instead of treating an LLM as an autonomous payment agent, RecoverFlow separates **facts**, **policy**, **AI proposal**, and **customer action**. It shows how AI can improve recovery decisions without being allowed to make unsafe ones.
 
-The default build uses no payment-provider, messaging, or analytics credential.
-`GROQ_API_KEY` is optional and remains server-side. Without it, the same policy
-and recovery workflow runs in clearly labelled fallback mode. The project never
-collects payment details, sends real messages, creates real payment links, or
-charges an instrument.
+## Why this exists
 
-## Local use
+Most payment-failure dashboards stop at “failed.” RecoverFlow asks the more useful question:
+
+> What is the safest, highest-confidence next move for this customer — and why?
+
+The demo starts with a UPI issuer-outage pattern. A customer with a healthy history should not be pushed into another immediate retry on the same failing rail. RecoverFlow pauses the rail, proposes an alternative method, permits at most one recovery link, and cancels pending work as soon as the payment succeeds.
+
+## What you can try
+
+1. Open the live demo and select a payment from the queue.
+2. Click **Run AI analysis** to produce a constrained Groq proposal, or use the deterministic policy fallback.
+3. Click **Create recovery link** to place a message in the simulated customer inbox.
+4. Click **Choose another method** to simulate recovery and reconciliation.
+5. Click **Test duplicate event** to see idempotency in action: no second customer message is created.
+6. Use **Test safety gate** to confirm that manual-review cases cannot message a customer.
+
+Everything is synthetic. No payment, message, customer identity, or payment instrument is real.
+
+## The product in one view
+
+```text
+Provider-shaped failure event
+          │
+          ▼
+  Normalize + minimize data
+          │
+          ▼
+  Deterministic recovery policy ─────────────┐
+          │                                  │
+          ▼                                  │
+  Optional Groq proposal (structured JSON)  │
+          │                                  │
+          └──── validate against policy ─────┘
+                         │
+                         ▼
+         One safe, auditable recovery action
+                         │
+                         ▼
+      Simulated inbox → payment success → stop work
+```
+
+## Safety is the feature
+
+Payments recovery is a trust problem. RecoverFlow is deliberately designed so that “AI-powered” does not mean “AI has permission to do everything.”
+
+| Guardrail | What it prevents |
+| --- | --- |
+| Deterministic policy before execution | An LLM cannot override retry, contact, or review rules. |
+| Same-rail retry block | During the simulated issuer outage, UPI is not retried immediately. |
+| One-link recovery flow | Duplicate events cannot create duplicate customer touches. |
+| Reconciliation stop rule | Recovery work is cancelled after a simulated payment success. |
+| Manual-review gate | High-risk cases cannot generate a customer message. |
+| Audit ledger | Every action records who/what acted and the reason. |
+| PII-minimizing adapter | The provider adapter normalizes only what recovery logic needs. |
+| Server-only Groq key | `GROQ_API_KEY` never reaches the browser bundle. |
+| Honest fallback | If Groq is unavailable, the app stays usable and labels the deterministic result. |
+
+## Architecture
+
+```text
+React / Vinext user interface
+          │
+          ▼
+Recovery API route
+  ├── Policy-safe demo commands
+  ├── Groq chat completion + JSON schema validation
+  └── Groq failure diagnostics (without exposing secrets)
+          │
+          ▼
+Cloudflare D1
+  ├── Recovery cases
+  ├── Customer inbox simulation
+  └── Append-only-style audit events
+```
+
+### Stack
+
+- **React + TypeScript + Vinext** for the responsive operations interface
+- **Cloudflare Workers + D1** for the server API and durable demo state
+- **Groq API** for optional, constrained recovery proposals
+- **Drizzle schema + SQL migrations** for the persistence layer
+- **No payment gateway, SMS, email, or analytics credentials** required
+
+## Run it locally
+
+### Prerequisites
+
+- Node.js 22+
+- npm
+- Optional: a Groq API key
 
 ```bash
+git clone https://github.com/Nikshay1/AI-Payment-Failure-Recovery-Agent.git
+cd AI-Payment-Failure-Recovery-Agent
 npm install
 npm run dev
 ```
 
-Open the local URL printed by the server. The app seeds an isolated browser demo
-session in D1 on first use. To enable live Groq proposals, copy `.env.example`
-to `.env.local` and add `GROQ_API_KEY`; fallback remains available for every
-missing-key, rate-limit, and timeout case.
+Open the local URL printed by the development server.
+
+### Enable Groq analysis (optional)
+
+RecoverFlow works without an API key. With no key, it uses its deterministic safety policy and clearly labels the result as a fallback.
+
+```bash
+copy .env.example .env.local
+```
+
+Then add your key to `.env.local`:
+
+```env
+GROQ_API_KEY=your_groq_key_here
+GROQ_MODEL=openai/gpt-oss-20b
+```
+
+For a hosted deployment, add `GROQ_API_KEY` as a **secret** in the deployment environment, then redeploy. Never commit `.env.local`, paste keys into issues, or share screenshots containing them. If a key is exposed, revoke it in Groq and replace it.
 
 ## Quality checks
 
@@ -45,13 +134,41 @@ npm run build
 npm test
 ```
 
-## Project layout
+## Repository guide
 
-- `app/recovery-console.tsx` — operations desk and customer journey.
-- `app/api/recovery/route.ts` — demo commands and server-only Groq boundary.
-- `db/recovery-store.ts` — D1 initialization, persistence, and audit ledger.
-- `lib/razorpay-adapter.ts` — provider-shaped failure normalization and HMAC utility.
-- `implmenetation_plan.md` — detailed product/implementation plan.
+| Path | Purpose |
+| --- | --- |
+| `app/recovery-console.tsx` | Interactive recovery desk, queue, and customer journey simulation |
+| `app/api/recovery/route.ts` | Server-side actions, Groq boundary, timeout handling, and safe diagnostics |
+| `db/recovery-store.ts` | D1 setup, seeded cases, recovery state transitions, and audit events |
+| `db/schema.ts` | Drizzle schema definitions |
+| `drizzle/` | Generated database migrations |
+| `lib/recovery.ts` | Shared domain types and formatting helpers |
+| `lib/razorpay-adapter.ts` | Razorpay-shaped failure normalizer and HMAC verification utility |
+| `implmenetation_plan.md` | Product rationale, phased build plan, safety model, and roadmap |
 
-All dashboard values are synthetic demo data. Opportunity scores are transparent
-heuristics, not probability claims.
+## A note on Razorpay integration
+
+The project intentionally runs as a zero-credential simulator. It includes a Razorpay-shaped payload adapter and signature-verification utility, but it does **not** call Razorpay, create real payment links, or send real messages.
+
+To connect a real provider in a production system, add authenticated webhook ingestion, provider signature verification, replay protection, a queue, explicit merchant controls, consent-aware messaging, observability, and human review workflows. Do not directly map model output to money movement or customer outreach.
+
+## What is deliberately not claimed
+
+- Recovery scores are transparent demo heuristics, not calibrated probabilities.
+- The application does not promise revenue recovery or payment success.
+- It is a portfolio-quality product prototype, not a production payment processor.
+- Groq enriches a proposal; the deterministic safety policy remains the authority.
+
+## Roadmap
+
+- [ ] Provider webhook contract tests and event replay fixtures
+- [ ] Merchant-configurable policy rules and approval thresholds
+- [ ] Recovery experiment measurement with holdouts and causal metrics
+- [ ] Human-review inbox for high-value or anomalous payments
+- [ ] Consent-aware email/SMS provider adapters
+- [ ] Full reconciliation and settlement-state ingestion
+
+---
+
+Built to make one point clear: **the best payment recovery agent does not just retry harder — it knows when to pause, route around failure, and protect the customer experience.**

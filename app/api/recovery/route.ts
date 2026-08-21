@@ -14,16 +14,17 @@ export async function GET(request: Request) {
 
 async function requestGroq() {
   const key = groqKey();
-  const fallback = {
+  const fallback = (issue?: string) => ({
     mode: "fallback" as const,
     action: "Wait 15m · offer card",
     detail: "6 related UPI issuer failures point to a temporary external outage. Customer history is healthy; avoid an immediate same-rail retry.",
     plan: "Pause the original UPI rail for 15 minutes, then send one respectful recovery link with card and netbanking first. Stop every pending touch after payment success.",
-  };
-  if (!key) return fallback;
+    groqIssue: issue,
+  });
+  if (!key) return fallback("no API key available to the runtime");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       signal: controller.signal,
@@ -31,7 +32,8 @@ async function requestGroq() {
       body: JSON.stringify({
         model: "openai/gpt-oss-20b",
         temperature: 0.2,
-        max_completion_tokens: 420,
+        reasoning_effort: "low",
+        max_completion_tokens: 600,
         messages: [
           { role: "system", content: "You are a constrained payment recovery planner. Return only schema-valid JSON. Never ask for bank details, make guarantees, blame a customer, or recommend retrying the same UPI rail during an issuer outage." },
           { role: "user", content: "Facts: amount band INR 2k-10k; method UPI; failure source issuer/bank; 6 similar failures in ten minutes; customer is previously successful; allowed actions are wait, offer_card, offer_netbanking, create_one_recovery_link, manual_review. Produce a concise safe recovery proposal." },
@@ -55,14 +57,15 @@ async function requestGroq() {
         },
       }),
     });
-    clearTimeout(timeout);
-    if (!response.ok) return fallback;
+    if (!response.ok) return fallback(`Groq returned HTTP ${response.status}`);
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? "{}") as { action?: string; detail?: string; plan?: string };
-    if (!parsed.action || !parsed.detail || !parsed.plan) return fallback;
-    return { mode: "live" as const, action: parsed.action.slice(0, 80), detail: parsed.detail.slice(0, 260), plan: parsed.plan.slice(0, 420) };
-  } catch {
-    return fallback;
+    if (!parsed.action || !parsed.detail || !parsed.plan) return fallback("Groq returned an incomplete plan");
+    return { mode: "live" as const, action: parsed.action.slice(0, 80), detail: parsed.detail.slice(0, 260), plan: parsed.plan.slice(0, 420), groqIssue: undefined };
+  } catch (error) {
+    return fallback(error instanceof Error && error.name === "AbortError" ? "Groq request timed out after 20 seconds" : "Groq connection failed");
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -70,6 +73,9 @@ export async function POST(request: Request) {
   const payload = await request.json().catch(() => ({})) as Payload;
   const id = sessionId(payload.sessionId);
   if (!payload.action) return Response.json({ error: "Action is required." }, { status: 400 });
-  if (payload.action === "analyze") return Response.json({ ...(await applyAnalysis(id, await requestGroq())), aiConfigured: Boolean(groqKey()) });
+  if (payload.action === "analyze") {
+    const proposal = await requestGroq();
+    return Response.json({ ...(await applyAnalysis(id, proposal)), aiConfigured: Boolean(groqKey()), groqIssue: proposal.groqIssue });
+  }
   return Response.json({ ...(await executeAction(id, payload.action)), aiConfigured: Boolean(groqKey()) });
 }

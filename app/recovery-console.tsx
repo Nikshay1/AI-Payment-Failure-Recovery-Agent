@@ -53,7 +53,7 @@ export function RecoveryConsole() {
         recover: "Payment captured. Pending recovery work has been cancelled.",
         replay: "Duplicate event ignored. No second customer message was created.",
         risk: "Safety gate confirmed. Customer messaging remains blocked.",
-        analyze: next.aiMode === "live" ? "Groq reviewed the case and the safe plan was applied." : "Deterministic safe plan applied. Groq could not be reached for this run.",
+        analyze: next.aiMode === "live" ? "Groq reviewed the case and the safe plan was applied." : `Deterministic safe plan applied. ${next.groqIssue ?? "Groq could not be reached for this run."}`,
       }[action]);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Something went wrong."); }
     finally { setBusy(null); }

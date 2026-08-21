@@ -46,6 +46,7 @@ export type DashboardState = {
   sessionId: string;
   aiMode: AiMode;
   aiConfigured: boolean;
+  groqIssue?: string;
   atRisk: number;
   recovered: number;
   recoveryRate: number;

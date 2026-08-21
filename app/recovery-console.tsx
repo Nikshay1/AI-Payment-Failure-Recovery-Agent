@@ -5,6 +5,12 @@ import { CASE_LABELS, type DashboardState, money, relativeTime, type RecoveryCas
 import "./recovery-console.css";
 
 const sessionStorageKey = "recoverflow-demo-session";
+const nav = [
+  { label: "Recovery desk", target: "recovery-desk" },
+  { label: "Queue", target: "recovery-queue" },
+  { label: "Customer link", target: "customer-link" },
+  { label: "Activity", target: "activity" },
+];
 
 function demoSession() {
   if (typeof window === "undefined") return "recoverflow_demo";
@@ -15,13 +21,6 @@ function demoSession() {
   return next;
 }
 
-const nav = [
-  { label: "Recovery desk", target: "recovery-desk", icon: "◉" },
-  { label: "Failure weather", target: "failure-weather", icon: "⌁" },
-  { label: "Playbooks", target: "playbooks", icon: "◫" },
-  { label: "Audit log", target: "audit-log", icon: "◌" },
-];
-
 function statusClass(status: RecoveryCase["status"]) { return `status status-${status}`; }
 function caseKind(id: string, kind: string) { return id.endsWith(`--${kind}`); }
 
@@ -29,7 +28,7 @@ export function RecoveryConsole() {
   const [data, setData] = useState<DashboardState | null>(null);
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [notice, setNotice] = useState("System ready — simulator data is isolated to this browser.");
+  const [notice, setNotice] = useState("Ready to review payment failures.");
   const [activeNav, setActiveNav] = useState("Recovery desk");
   const current = useMemo(() => data?.cases.find((item) => item.id === selected) ?? data?.cases[0], [data, selected]);
 
@@ -45,21 +44,19 @@ export function RecoveryConsole() {
     setBusy(action);
     try {
       const response = await fetch("/api/recovery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: demoSession(), action }) });
-      if (!response.ok) throw new Error("The recovery engine was unavailable.");
+      if (!response.ok) throw new Error("The recovery engine is temporarily unavailable.");
       const next = await response.json() as DashboardState;
       setData(next);
-      const messages: Record<typeof action, string> = {
-        reset: "Demo reset to its starting recovery queue.",
-        execute: "One recovery link is now in the simulated customer inbox.",
-        recover: "Payment captured. Pending recovery work was cancelled.",
-        replay: "Duplicate webhook safely ignored — no second message was created.",
-        risk: "Safety gate confirmed: customer messaging remains blocked.",
-        analyze: next.aiMode === "live" ? "Groq proposal validated and applied." : "Safe deterministic plan applied. Add GROQ_API_KEY for live analysis.",
-      };
-      setNotice(messages[action]);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Something went wrong.");
-    } finally { setBusy(null); }
+      setNotice({
+        reset: "Demo reset. The recovery queue is back at its starting state.",
+        execute: "A single recovery link is ready in the simulated customer inbox.",
+        recover: "Payment captured. Pending recovery work has been cancelled.",
+        replay: "Duplicate event ignored. No second customer message was created.",
+        risk: "Safety gate confirmed. Customer messaging remains blocked.",
+        analyze: next.aiMode === "live" ? "Groq reviewed the case and the safe plan was applied." : "Deterministic safe plan applied. Groq could not be reached for this run.",
+      }[action]);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Something went wrong."); }
+    finally { setBusy(null); }
   }
 
   function goTo(item: (typeof nav)[number]) {
@@ -67,71 +64,39 @@ export function RecoveryConsole() {
     document.getElementById(item.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  if (!data || !current) return <main className="loading-shell"><span className="pulse" /> Preparing recovery desk…</main>;
-
+  if (!data || !current) return <main className="loading-shell">Loading recovery desk…</main>;
   const message = data.inbox.find((item) => caseKind(item.caseId, "upi"));
-  return (
-    <main className="app-shell">
-      <aside className="side-rail">
-        <div className="brand"><span className="brand-mark">R</span><span>recover<span>flow</span></span></div>
-        <div className="rail-label">Control plane</div>
-        <nav aria-label="Application navigation">
-          {nav.map((item) => <button className={activeNav === item.label ? "nav-item nav-active" : "nav-item"} key={item.target} onClick={() => goTo(item)} type="button"><span>{item.icon}</span>{item.label}</button>)}
-        </nav>
-        <div className="rail-foot"><div className="demo-dot" /> Synthetic demo<br /><span>Groq-safe · zero-cost</span></div>
-      </aside>
+  const highRisk = current.status === "manual_review";
 
-      <section className="workspace">
-        <header className="topbar" id="recovery-desk">
-          <div><p className="eyebrow">Friday, 21 Aug · Payments operations</p><h1>Make the next best recovery move.</h1></div>
-          <div className="top-actions"><span className={`model-state model-${data.aiMode}`}>{data.aiMode === "live" ? "✦ Groq live" : data.aiMode === "cached" ? "✦ cached plan" : data.aiConfigured ? "✦ Groq key set" : "◌ safe fallback"}</span><button className="ghost-button" onClick={() => void act("reset")} type="button">Reset demo</button><button className="primary-button" onClick={() => void act("analyze")} disabled={busy !== null} type="button">{busy === "analyze" ? "Thinking safely…" : "Run AI analysis"}</button></div>
-        </header>
-
-        <div className="notice" role="status"><span>✦</span>{notice}</div>
-
-        <section className="metrics" aria-label="Recovery metrics">
-          <Metric label="At-risk value" value={money(data.atRisk)} note="3 recoverable cases" accent="blue" />
-          <Metric label="Recovered today" value={money(data.recovered)} note="1 completed journey" accent="mint" />
-          <Metric label="Recovery rate" value={`${data.recoveryRate}%`} note="synthetic baseline" accent="amber" />
-          <Metric label="Active incidents" value={`${data.incidentCount}`} note="UPI issuer cluster" accent="red" />
+  return <main className="app-shell">
+    <aside className="side-rail">
+      <a className="brand" href="#recovery-desk" onClick={(event) => { event.preventDefault(); goTo(nav[0]); }}>RecoverFlow</a>
+      <nav aria-label="Application navigation">{nav.map((item) => <button className={activeNav === item.label ? "nav-item nav-active" : "nav-item"} key={item.target} onClick={() => goTo(item)} type="button">{item.label}</button>)}</nav>
+      <p className="rail-note">Payment recovery<br />simulation</p>
+    </aside>
+    <section className="workspace" id="recovery-desk">
+      <header className="topbar">
+        <div><p className="kicker">Payments operations</p><h1>Recovery desk</h1><p className="subhead">Decide what happens next when a payment fails.</p></div>
+        <div className="header-actions"><span className="model-state">{data.aiMode === "live" ? "Groq live" : data.aiConfigured ? "Groq key set" : "Safe fallback"}</span><button className="text-button" onClick={() => void act("reset")} type="button">Reset demo</button><button className="black-button" onClick={() => void act("analyze")} disabled={busy !== null} type="button">{busy === "analyze" ? "Reviewing…" : "Run AI analysis"}</button></div>
+      </header>
+      <div className="notice" role="status">{notice}</div>
+      <dl className="summary" aria-label="Recovery summary"><div><dt>At risk</dt><dd>{money(data.atRisk)}</dd></div><div><dt>Recovered today</dt><dd>{money(data.recovered)}</dd></div><div><dt>Recovery rate</dt><dd>{data.recoveryRate}%</dd></div><div><dt>Open incidents</dt><dd>{data.incidentCount}</dd></div></dl>
+      <section className="desk-grid">
+        <section className="queue-panel" id="recovery-queue" aria-labelledby="queue-heading">
+          <div className="section-bar"><div><p className="kicker">Needs attention</p><h2 id="queue-heading">Payment queue</h2></div><span>{data.cases.length} cases</span></div>
+          <div className="queue-table" role="table" aria-label="Payment recovery queue"><div className="queue-head" role="row"><span>Customer</span><span>Payment</span><span>Reason</span><span>Status</span></div>{data.cases.map((item) => <button className={item.id === current.id ? "queue-row selected" : "queue-row"} onClick={() => setSelected(item.id)} key={item.id} type="button" role="row"><span><strong>{item.customer}</strong><small>{item.method} · {item.rail}</small></span><span><strong>{money(item.amount)}</strong><small>{item.score ? `${item.score}/100 opportunity` : "review required"}</small></span><span className="reason">{item.reason}</span><span className={statusClass(item.status)}>{CASE_LABELS[item.status]}</span></button>)}</div>
         </section>
-
-        <section className="hero-grid">
-          <article className="incident-card" id="failure-weather">
-            <div className="section-heading"><div><p className="eyebrow">Failure weather</p><h2>UPI issuer friction is rising</h2></div><span className="incident-live"><i /> Live signal</span></div>
-            <div className="weather-line" role="img" aria-label="Six related UPI issuer failures detected over ten minutes"><div className="weather-labels"><span>12:20</span><span>12:24</span><span>12:28</span><span>now</span></div><div className="weather-bars">{[12, 19, 15, 31, 49, 78, 63, 89, 72, 96].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}</div></div>
-            <div className="weather-summary"><div><strong>6 failures</strong><span>same bank / rail</span></div><div><strong>+34%</strong><span>vs. baseline</span></div><div><strong>15 min</strong><span>safe wait window</span></div></div>
-            <div className="signal-note"><span>⌁</span>Provider pattern says “route around”, not “try the same thing again”.</div>
-          </article>
-
-          <article className="decision-card" id="playbooks">
-            <div className="section-heading"><div><p className="eyebrow">Priority case</p><h2>{current.customer}</h2></div><span className={statusClass(current.status)}>{CASE_LABELS[current.status]}</span></div>
-            <div className="case-meta"><span>{money(current.amount)}</span><i /> <span>{current.method}</span><i /> <span>{current.rail}</span></div>
-            <div className="score-row"><div><span>Recovery opportunity</span><strong>{current.score}<small>/100</small></strong></div><div className="score-track"><span style={{ width: `${current.score}%` }} /></div></div>
-            <p className="case-detail">{current.detail}</p>
-            <div className="decision-trace"><Trace step="01" label="Facts" value={current.reason} /><Trace step="02" label="Policy" value="Same-rail retry blocked" /><Trace step="03" label="Plan" value={current.proposedAction} /></div>
-            <div className="button-row"><button className="primary-button" onClick={() => void act("execute")} disabled={busy !== null || current.status === "recovered" || current.status === "manual_review"} type="button">{busy === "execute" ? "Creating…" : current.status === "awaiting_customer" ? "Link sent to inbox" : "Execute safe recovery"}</button><button className="ghost-button" onClick={() => void act("replay")} disabled={busy !== null} type="button">Replay duplicate</button></div>
-          </article>
-        </section>
-
-        <section className="lower-grid">
-          <article className="queue-card">
-            <div className="section-heading"><div><p className="eyebrow">Recovery queue</p><h2>Actionable, not noisy</h2></div><span className="small-muted">{data.cases.length} cases</span></div>
-            <div className="queue-list">{data.cases.map((item) => <button className={item.id === current.id ? "queue-item selected" : "queue-item"} onClick={() => setSelected(item.id)} key={item.id} type="button"><span className={`method-icon method-${item.method.toLowerCase()}`}>{item.method === "UPI" ? "₹" : "▣"}</span><span className="queue-copy"><strong>{item.customer}</strong><small>{item.category} · {item.reason}</small></span><span className="queue-value"><strong>{money(item.amount)}</strong><small>{item.score ? `${item.score} score` : "blocked"}</small></span><span className={statusClass(item.status)}>{CASE_LABELS[item.status]}</span></button>)}</div>
-          </article>
-
-          <article className="journey-card">
-            <div className="section-heading"><div><p className="eyebrow">Customer journey twin</p><h2>Inbox → recovery → receipt</h2></div><span className="small-muted">simulated</span></div>
-            <div className="phone"><div className="phone-top"><span>9:41</span><b>Customer inbox</b><span>●●●</span></div>{message ? <div className="message-card"><span className="message-avatar">R</span><div><small>recoverflow payments · now</small><strong>{message.subject}</strong><p>{message.body}</p><button onClick={() => void act("recover")} disabled={busy !== null || current.status === "recovered"} type="button">{current.status === "recovered" ? "Payment completed" : "Choose another method →"}</button></div></div> : <div className="empty-inbox"><span>✉</span><strong>Nothing sent yet</strong><p>Execute the safe recovery plan to create one short-lived customer link.</p></div>}<div className="phone-footer">No real email, SMS, or payment is sent.</div></div>
-            <div className="safety-callout"><span>◌</span><div><strong>Safety gate active</strong><p>High-risk cases cannot create a customer message.</p></div><button onClick={() => void act("risk")} type="button">Test gate</button></div>
-          </article>
-        </section>
-
-        <section className="audit-card" id="audit-log"><div className="section-heading"><div><p className="eyebrow">Decision ledger</p><h2>Every action has a reason</h2></div><span className="small-muted">latest {data.audit.length} events</span></div><div className="audit-list">{data.audit.slice(0, 5).map((event) => <div className="audit-row" key={event.id}><span className={`audit-icon audit-${event.actor}`}>{event.actor === "agent" ? "✦" : event.actor === "customer" ? "✓" : "◌"}</span><div><strong>{event.kind.replaceAll("_", " ")}</strong><p>{event.message}</p></div><time>{relativeTime(event.createdAt)}</time></div>)}</div></section>
+        <aside className="detail-panel" aria-labelledby="detail-heading">
+          <div className="section-bar"><div><p className="kicker">Selected payment</p><h2 id="detail-heading">{current.customer}</h2></div><span className={statusClass(current.status)}>{CASE_LABELS[current.status]}</span></div>
+          <div className="payment-facts"><div><span>Amount</span><strong>{money(current.amount)}</strong></div><div><span>Method</span><strong>{current.method} · {current.rail}</strong></div></div><p className="detail-copy">{current.detail}</p>
+          <div className="decision"><p className="kicker">Recommended next step</p><strong>{current.proposedAction}</strong><p>{current.plan}</p></div>
+          <div className="detail-actions"><button className="black-button" onClick={() => void act("execute")} disabled={busy !== null || current.status === "recovered" || highRisk} type="button">{busy === "execute" ? "Creating link…" : current.status === "awaiting_customer" ? "Link already sent" : "Create recovery link"}</button><button className="text-button" onClick={() => void act("replay")} disabled={busy !== null} type="button">Test duplicate event</button></div>{highRisk && <p className="blocked-note">Messaging is unavailable until this payment is reviewed.</p>}
+        </aside>
       </section>
-    </main>
-  );
+      <section className="lower-grid">
+        <section className="journey-panel" id="customer-link" aria-labelledby="journey-heading"><div className="section-bar"><div><p className="kicker">Customer link</p><h2 id="journey-heading">Recovery journey</h2></div><span>Simulated</span></div>{message ? <div className="message"><p><strong>{message.subject}</strong><br />{message.body}</p><button className="black-button" onClick={() => void act("recover")} disabled={busy !== null || current.status === "recovered"} type="button">{current.status === "recovered" ? "Payment completed" : "Choose another method"}</button></div> : <div className="empty-state"><strong>No message sent</strong><p>Create one recovery link only after reviewing the selected payment.</p></div>}<div className="panel-foot">No real email, SMS, or payment is sent.</div></section>
+        <section className="activity-panel" id="activity" aria-labelledby="activity-heading"><div className="section-bar"><div><p className="kicker">Decision record</p><h2 id="activity-heading">Activity</h2></div><button className="text-button" onClick={() => void act("risk")} type="button">Test safety gate</button></div><div className="activity-list">{data.audit.slice(0, 5).map((event) => <div className="activity-row" key={event.id}><div><strong>{event.kind.replaceAll("_", " ")}</strong><p>{event.message}</p></div><time>{relativeTime(event.createdAt)}</time></div>)}</div></section>
+      </section>
+    </section>
+  </main>;
 }
-
-function Metric({ label, value, note, accent }: { label: string; value: string; note: string; accent: string }) { return <article className={`metric metric-${accent}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>; }
-function Trace({ step, label, value }: { step: string; label: string; value: string }) { return <div><span>{step}</span><small>{label}</small><strong>{value}</strong></div>; }

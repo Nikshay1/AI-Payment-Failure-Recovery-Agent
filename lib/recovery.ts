@@ -45,6 +45,7 @@ export type InboxMessage = {
 export type DashboardState = {
   sessionId: string;
   aiMode: AiMode;
+  aiConfigured: boolean;
   atRisk: number;
   recovered: number;
   recoveryRate: number;

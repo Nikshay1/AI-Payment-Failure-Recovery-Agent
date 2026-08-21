@@ -15,7 +15,12 @@ function demoSession() {
   return next;
 }
 
-const nav = ["Recovery desk", "Failure weather", "Playbooks", "Audit log"];
+const nav = [
+  { label: "Recovery desk", target: "recovery-desk", icon: "◉" },
+  { label: "Failure weather", target: "failure-weather", icon: "⌁" },
+  { label: "Playbooks", target: "playbooks", icon: "◫" },
+  { label: "Audit log", target: "audit-log", icon: "◌" },
+];
 
 function statusClass(status: RecoveryCase["status"]) { return `status status-${status}`; }
 function caseKind(id: string, kind: string) { return id.endsWith(`--${kind}`); }
@@ -25,6 +30,7 @@ export function RecoveryConsole() {
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("System ready — simulator data is isolated to this browser.");
+  const [activeNav, setActiveNav] = useState("Recovery desk");
   const current = useMemo(() => data?.cases.find((item) => item.id === selected) ?? data?.cases[0], [data, selected]);
 
   useEffect(() => {
@@ -56,6 +62,11 @@ export function RecoveryConsole() {
     } finally { setBusy(null); }
   }
 
+  function goTo(item: (typeof nav)[number]) {
+    setActiveNav(item.label);
+    document.getElementById(item.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   if (!data || !current) return <main className="loading-shell"><span className="pulse" /> Preparing recovery desk…</main>;
 
   const message = data.inbox.find((item) => caseKind(item.caseId, "upi"));
@@ -65,15 +76,15 @@ export function RecoveryConsole() {
         <div className="brand"><span className="brand-mark">R</span><span>recover<span>flow</span></span></div>
         <div className="rail-label">Control plane</div>
         <nav aria-label="Application navigation">
-          {nav.map((item, index) => <button className={index === 0 ? "nav-item nav-active" : "nav-item"} key={item} type="button"><span>{["◉", "⌁", "◫", "◌"][index]}</span>{item}</button>)}
+          {nav.map((item) => <button className={activeNav === item.label ? "nav-item nav-active" : "nav-item"} key={item.target} onClick={() => goTo(item)} type="button"><span>{item.icon}</span>{item.label}</button>)}
         </nav>
         <div className="rail-foot"><div className="demo-dot" /> Synthetic demo<br /><span>Groq-safe · zero-cost</span></div>
       </aside>
 
       <section className="workspace">
-        <header className="topbar">
+        <header className="topbar" id="recovery-desk">
           <div><p className="eyebrow">Friday, 21 Aug · Payments operations</p><h1>Make the next best recovery move.</h1></div>
-          <div className="top-actions"><span className={`model-state model-${data.aiMode}`}>{data.aiMode === "live" ? "✦ Groq live" : data.aiMode === "cached" ? "✦ cached plan" : "◌ safe fallback"}</span><button className="ghost-button" onClick={() => void act("reset")} type="button">Reset demo</button><button className="primary-button" onClick={() => void act("analyze")} disabled={busy !== null} type="button">{busy === "analyze" ? "Thinking safely…" : "Run AI analysis"}</button></div>
+          <div className="top-actions"><span className={`model-state model-${data.aiMode}`}>{data.aiMode === "live" ? "✦ Groq live" : data.aiMode === "cached" ? "✦ cached plan" : data.aiConfigured ? "✦ Groq key set" : "◌ safe fallback"}</span><button className="ghost-button" onClick={() => void act("reset")} type="button">Reset demo</button><button className="primary-button" onClick={() => void act("analyze")} disabled={busy !== null} type="button">{busy === "analyze" ? "Thinking safely…" : "Run AI analysis"}</button></div>
         </header>
 
         <div className="notice" role="status"><span>✦</span>{notice}</div>
@@ -86,14 +97,14 @@ export function RecoveryConsole() {
         </section>
 
         <section className="hero-grid">
-          <article className="incident-card">
+          <article className="incident-card" id="failure-weather">
             <div className="section-heading"><div><p className="eyebrow">Failure weather</p><h2>UPI issuer friction is rising</h2></div><span className="incident-live"><i /> Live signal</span></div>
             <div className="weather-line" role="img" aria-label="Six related UPI issuer failures detected over ten minutes"><div className="weather-labels"><span>12:20</span><span>12:24</span><span>12:28</span><span>now</span></div><div className="weather-bars">{[12, 19, 15, 31, 49, 78, 63, 89, 72, 96].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}</div></div>
             <div className="weather-summary"><div><strong>6 failures</strong><span>same bank / rail</span></div><div><strong>+34%</strong><span>vs. baseline</span></div><div><strong>15 min</strong><span>safe wait window</span></div></div>
             <div className="signal-note"><span>⌁</span>Provider pattern says “route around”, not “try the same thing again”.</div>
           </article>
 
-          <article className="decision-card">
+          <article className="decision-card" id="playbooks">
             <div className="section-heading"><div><p className="eyebrow">Priority case</p><h2>{current.customer}</h2></div><span className={statusClass(current.status)}>{CASE_LABELS[current.status]}</span></div>
             <div className="case-meta"><span>{money(current.amount)}</span><i /> <span>{current.method}</span><i /> <span>{current.rail}</span></div>
             <div className="score-row"><div><span>Recovery opportunity</span><strong>{current.score}<small>/100</small></strong></div><div className="score-track"><span style={{ width: `${current.score}%` }} /></div></div>
@@ -116,7 +127,7 @@ export function RecoveryConsole() {
           </article>
         </section>
 
-        <section className="audit-card"><div className="section-heading"><div><p className="eyebrow">Decision ledger</p><h2>Every action has a reason</h2></div><span className="small-muted">latest {data.audit.length} events</span></div><div className="audit-list">{data.audit.slice(0, 5).map((event) => <div className="audit-row" key={event.id}><span className={`audit-icon audit-${event.actor}`}>{event.actor === "agent" ? "✦" : event.actor === "customer" ? "✓" : "◌"}</span><div><strong>{event.kind.replaceAll("_", " ")}</strong><p>{event.message}</p></div><time>{relativeTime(event.createdAt)}</time></div>)}</div></section>
+        <section className="audit-card" id="audit-log"><div className="section-heading"><div><p className="eyebrow">Decision ledger</p><h2>Every action has a reason</h2></div><span className="small-muted">latest {data.audit.length} events</span></div><div className="audit-list">{data.audit.slice(0, 5).map((event) => <div className="audit-row" key={event.id}><span className={`audit-icon audit-${event.actor}`}>{event.actor === "agent" ? "✦" : event.actor === "customer" ? "✓" : "◌"}</span><div><strong>{event.kind.replaceAll("_", " ")}</strong><p>{event.message}</p></div><time>{relativeTime(event.createdAt)}</time></div>)}</div></section>
       </section>
     </main>
   );

@@ -9,7 +9,7 @@ function sessionId(value: unknown) {
 
 export async function GET(request: Request) {
   const id = sessionId(new URL(request.url).searchParams.get("session"));
-  return Response.json(await dashboard(id));
+  return Response.json({ ...(await dashboard(id)), aiConfigured: Boolean(groqKey()) });
 }
 
 async function requestGroq() {
@@ -70,6 +70,6 @@ export async function POST(request: Request) {
   const payload = await request.json().catch(() => ({})) as Payload;
   const id = sessionId(payload.sessionId);
   if (!payload.action) return Response.json({ error: "Action is required." }, { status: 400 });
-  if (payload.action === "analyze") return Response.json(await applyAnalysis(id, await requestGroq()));
-  return Response.json(await executeAction(id, payload.action));
+  if (payload.action === "analyze") return Response.json({ ...(await applyAnalysis(id, await requestGroq())), aiConfigured: Boolean(groqKey()) });
+  return Response.json({ ...(await executeAction(id, payload.action)), aiConfigured: Boolean(groqKey()) });
 }

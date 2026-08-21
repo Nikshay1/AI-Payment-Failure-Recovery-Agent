@@ -117,6 +117,7 @@ export async function dashboard(sessionId: string): Promise<DashboardState> {
   return {
     sessionId,
     aiMode: cases.find((item) => item.id === caseId(sessionId, "upi"))?.aiMode ?? "fallback",
+    aiConfigured: Boolean(groqKey()),
     atRisk,
     recovered,
     recoveryRate: Math.round((cases.filter((item) => item.status === "recovered").length / cases.length) * 100),
